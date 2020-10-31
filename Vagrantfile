@@ -16,10 +16,13 @@ Vagrant.configure("2") do |config|
 	master.vm.network "private_network", ip: "192.168.50.10"
 	master.vm.hostname = "control1"
 	master.vm.provision "ansible" do |ansible|
-	  ansible.playbook = "kubernetes-setup/control-playbook.yml"
+	  ansible.playbook = "kubernetes-setup/playbook.yml"
 	  ansible.extra_vars = {
 		node_ip: "192.168.50.10",
 	  }
+      ansible.groups = {
+        "controllers" => ["control1"]
+      }
 	end
   end
 
@@ -29,10 +32,13 @@ Vagrant.configure("2") do |config|
 	  node.vm.network "private_network", ip: "192.168.50.#{i + 10}"
 	  node.vm.hostname = "worker#{i}"
 	  node.vm.provision "ansible" do |ansible|
-		ansible.playbook = "kubernetes-setup/worker-playbook.yml"
+		ansible.playbook = "kubernetes-setup/playbook.yml"
 		ansible.extra_vars = {
 		  node_ip: "192.168.50.#{i + 10}",
 		}
+        ansible.groups = {
+          "workers" => ["worker#{i}"]
+        }
 	  end
 	end
   end
