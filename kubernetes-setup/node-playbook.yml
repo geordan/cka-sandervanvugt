@@ -25,6 +25,17 @@
         repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu xenial stable
         state: present
 
+    - name: Install base/helpful packages 
+      apt:
+        name: "{{ packages }}"
+        state: present
+        update_cache: yes
+      vars:
+        packages:
+          - bash-completion
+          - git
+          - vim
+
     - name: Install docker and its dependecies
       apt: 
         name: "{{ packages }}"
