@@ -1,5 +1,5 @@
 IMAGE_NAME = "bento/ubuntu-16.04"
-N = 2
+N = 3
 
 Vagrant.configure("2") do |config|
   config.ssh.insert_key = false
@@ -9,12 +9,14 @@ Vagrant.configure("2") do |config|
 	v.cpus = 2
   end
 
-  config.vm.define "k8s-master" do |master|
+  # Name/IP should match in step "Initialize the Kubernetes cluster using kubeadm"
+  # in kubernetes-setup/control-playbook.yml
+  config.vm.define "control1" do |master|
 	master.vm.box = IMAGE_NAME
 	master.vm.network "private_network", ip: "192.168.50.10"
-	master.vm.hostname = "k8s-master"
+	master.vm.hostname = "control1"
 	master.vm.provision "ansible" do |ansible|
-	  ansible.playbook = "kubernetes-setup/master-playbook.yml"
+	  ansible.playbook = "kubernetes-setup/control-playbook.yml"
 	  ansible.extra_vars = {
 		node_ip: "192.168.50.10",
 	  }
@@ -22,12 +24,12 @@ Vagrant.configure("2") do |config|
   end
 
   (1..N).each do |i|
-	config.vm.define "node-#{i}" do |node|
+	config.vm.define "worker#{i}" do |node|
 	  node.vm.box = IMAGE_NAME
 	  node.vm.network "private_network", ip: "192.168.50.#{i + 10}"
-	  node.vm.hostname = "node-#{i}"
+	  node.vm.hostname = "worker#{i}"
 	  node.vm.provision "ansible" do |ansible|
-		ansible.playbook = "kubernetes-setup/node-playbook.yml"
+		ansible.playbook = "kubernetes-setup/worker-playbook.yml"
 		ansible.extra_vars = {
 		  node_ip: "192.168.50.#{i + 10}",
 		}
