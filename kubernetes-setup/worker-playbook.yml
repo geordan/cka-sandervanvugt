@@ -1,6 +1,12 @@
 ---
-- name: Copy the join command to server location
+- name: copy the join command to server location
   copy: src=join-command dest=/tmp/join-command.sh mode=0777
 
-- name: Join the node to cluster
+- name: check if worker is already joined to cluster
+  stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: kubelet_conf
+
+- name: join the node to cluster
   command: sh /tmp/join-command.sh
+  when: kubelet_conf.stat.exists == False

@@ -1,11 +1,11 @@
-IMAGE_NAME = "bento/ubuntu-16.04"
-N = 3
+IMAGE_NAME = "bento/centos-7"
+WORKER_COUNT = 3
 
 Vagrant.configure("2") do |config|
   config.ssh.insert_key = false
 
   config.vm.provider "virtualbox" do |v|
-	v.memory = 1024
+	v.memory = 2048
 	v.cpus = 2
   end
 
@@ -26,7 +26,7 @@ Vagrant.configure("2") do |config|
 	end
   end
 
-  (1..N).each do |i|
+  (1..WORKER_COUNT).each do |i|
 	config.vm.define "worker#{i}" do |node|
 	  node.vm.box = IMAGE_NAME
 	  node.vm.network "private_network", ip: "192.168.50.#{i + 10}"

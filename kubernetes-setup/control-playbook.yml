@@ -1,29 +1,49 @@
 ---
-- name: Reset kubeadm changes before initializing
-  command: kubeadm reset -f 
+- name: kubeadm - check if kubeadm init has already been ran
+  stat:
+    path: /etc/kubernetes/manifests/kube-apiserver.yaml
+  register: kube_apiserver_yaml
 
-- name: Initialize the Kubernetes cluster using kubeadm
+- name: kubeadm - initialize the Kubernetes cluster using kubeadm
   command: kubeadm init --apiserver-advertise-address="192.168.50.10" --apiserver-cert-extra-sans="192.168.50.10"  --node-name control1 --pod-network-cidr=192.168.0.0/16
+  when: kube_apiserver_yaml.stat.exists == False
 
-- name: Setup kubeconfig for vagrant user
-  command: "{{ item }}"
-  with_items:
-    - mkdir -p /home/vagrant/.kube
-    - cp /etc/kubernetes/admin.conf /home/vagrant/.kube/config
-    - chown vagrant:vagrant /home/vagrant/.kube/config
+- name: kubeconfig - make .kube dir in vagrant user home dir
+  file:
+    path: /home/vagrant.kube
+    state: directory
+    owner: vagrant
+    group: vagrant
+    mode: '0755'
 
-- name: Get kubectl version for weave URL
+- name: kubeconfig - copy config to vagrant user 
+  copy:
+    src: /etc/kubernetes/admin.conf
+    dest: /home/vagrant/.kube/config
+    remote_src: yes
+    owner: vagrant
+    group: vagrant
+    mode: '0755'
+
+- name: kubeconfig  - copy kube config to local /tmp 
+  fetch:
+    src: /etc/kubernetes/admin.conf
+    dest: /tmp
+
+- name: network - get kubectl version for weave URL
   shell: "kubectl version | base64 | tr -d '\n'"
   register: kubectl_version
 
-- name: Install weave pod network
+- name: network - install weave pod network
   become: false
   command: kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version={{ kubectl_version.stdout_lines[0] }}"
 
-- name: Generate join command
+- name: join cluster - generate join command
   command: kubeadm token create --print-join-command
   register: join_command
+  when: kube_apiserver_yaml.stat.exists == False
 
-- name: Copy join command to local file
+- name: join cluster - copy join command to local file
   become: false
   local_action: copy content="{{ join_command.stdout_lines[0] }}" dest="./join-command"
+  when: kube_apiserver_yaml.stat.exists == False

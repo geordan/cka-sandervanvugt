@@ -2,31 +2,16 @@
 - hosts: all
   become: true
   tasks:
-  - name: Install packages that allow apt to be used over HTTPS
-    apt:
-      name: "{{ packages }}"
-      state: present
-      update_cache: yes
-    vars:
-      packages:
-        - apt-transport-https
-        - ca-certificates
-        - curl
-        - gnupg-agent
-        - software-properties-common
-
-  - name: Add an apt signing key for Docker
-    apt_key:
-      url: https://download.docker.com/linux/ubuntu/gpg
-      state: present
-
-  - name: Add apt repository for stable version
-    apt_repository:
-      repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu xenial stable
-      state: present
-
-  - name: Install base/helpful packages 
-    apt:
+  - name: add docker-ce repository
+    yum_repository:
+      name: docker-ce
+      description: Docker-CE repository
+      baseurl: https://download.docker.com/linux/centos/7/x86_64/stable/
+      gpgkey: https://download.docker.com/linux/centos/gpg
+      # baseurl: https://download.docker.com/linux/centos/docker-ce.repo
+      
+  - name: install base/helpful packages
+    yum:
       name: "{{ packages }}"
       state: present
       update_cache: yes
@@ -35,9 +20,11 @@
         - bash-completion
         - git
         - vim
+        - device-mapper-persistent-data 
+        - lvm2
 
-  - name: Install docker and its dependecies
-    apt:
+  - name: docker - install packages
+    yum:
       name: "{{ packages }}"
       state: present
       update_cache: yes
@@ -46,15 +33,89 @@
         - docker-ce
         - docker-ce-cli
         - containerd.io
-    notify:
-      - docker status
 
-  - name: Add vagrant user to docker group
+  - name: docker - add vagrant user to docker group
     user:
       name: vagrant
       group: docker
 
-  - name: Remove swapfile from /etc/fstab
+  - name: docker - create /etc/docker
+    file:
+      path: /etc/docker/
+      state: directory
+      mode: '0755'
+
+  - name: docker - configure daemon
+    copy:
+      src: etc_docker_daemon.json
+      dest: /etc/docker/daemon.json
+      owner: root
+      group: root
+      mode: '0755'
+
+  - name: docker - create /etc/systemd/system/docker.service.d/
+    file:
+      path: /etc/systemd/system/docker.service.d
+      state: directory
+      mode: '0755'
+
+  - name: docker - start/enable service
+    service: 
+      name: docker 
+      enabled: yes
+      state: started
+
+  - name: configure containerd - create /etc/containerd
+    file:
+      path: /etc/containerd
+      state: directory
+      mode: '0755'
+
+  - name: configure containerd - copy containerd config.toml
+    copy:
+      src: etc_containerd_config.toml
+      dest: /etc/containerd/config.toml
+      owner: root
+      group: root
+      mode: '0755'
+
+  - name: containerd - copy over containerd.conf
+    copy:
+      src: etc_modules-load.d_containerd.conf
+      dest: /etc/modules-load.d/containerd.conf
+      owner: root
+      group: root
+      mode: '0755'
+
+  - name: containerd - load overlay module
+    modprobe:
+      name: overlay
+      state: present
+
+  - name: Containerd - Load br_netfilter module
+    modprobe:
+      name: br_netfilter
+      state: present
+
+  - name: containerd - set net.bridge.bridge-nf-call-iptables  = 1
+    sysctl:
+      name: net.bridge.bridge-nf-call-iptables
+      value: '1'
+      reload: yes
+
+  - name: containerd - set net.ipv4.ip_forward = 1
+    sysctl:
+      name: net.ipv4.ip_forward
+      value: '1'
+      reload: yes
+
+  - name: containerd - set net.bridge.bridge-nf-call-ip6tables = 1
+    sysctl:
+      name: net.bridge.bridge-nf-call-ip6tables
+      value: '1'
+      reload: yes
+
+  - name: remove swapfile from /etc/fstab
     mount:
       name: "{{ item }}"
       fstype: swap
@@ -63,65 +124,64 @@
       - swap
       - none
 
-  - name: Disable swap
+  - name: disable swap
     command: swapoff -a
     when: ansible_swaptotal_mb > 0
 
-  - name: Add an apt signing key for Kubernetes
-    apt_key:
-      url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
-      state: present
+  - name: add kubernetes yum repository
+    yum_repository:
+      name: kubernetes
+      description: Kubernetes repository
+      baseurl: https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64/
+      gpgkey: https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+      gpgcheck: yes
 
-  - name: Adding apt repository for Kubernetes
-    apt_repository:
-      repo: deb https://apt.kubernetes.io/ kubernetes-xenial main
-      state: present
-      filename: kubernetes.list
-
-  - name: Install Kubernetes binaries
-    apt: 
+  - name: install kubernetes binaries
+    yum:
       name: "{{ packages }}"
       state: present
       update_cache: yes
     vars:
       packages:
         # - etcdctl
-        - kubelet 
-        - kubeadm 
+        - kubelet
+        - kubeadm
         - kubectl
 
-  - name: Create /etc/default/kubelet if it doesn't exist
+  - name: create /etc/default/kubelet if it doesn't exist
     copy:
       content: ""
       dest: /etc/default/kubelet
       force: no
 
-  - name: Configure node ip
+  - name: configure node ip
     lineinfile:
       path: /etc/default/kubelet
       line: KUBELET_EXTRA_ARGS=--node-ip={{ node_ip }}
-    notify:
-      - restart kubelet
 
-  handlers:
-    - name: docker status
-      service: name=docker state=started
+  - name: start/enable kubelet
+    service: 
+      name: kubelet 
+      enabled: yes
+      state: started
 
-    - name: restart kubelet
-      service: 
-        name: kubelet 
-        state: restarted
-
+  - name: /etc/hosts - add controller and worker entries
+    blockinfile:
+      path: /etc/hosts
+      block: |
+        192.168.50.10 controller1
+        192.168.50.11 worker1
+        192.168.50.12 worker2
+        192.168.50.13 worker3
 
 - hosts: controllers
   become: true
   tasks:
-    - name: Setup Controller Node(s)
+    - name: setup controller node(s)
       include: control-playbook.yml
 
 - hosts: workers
   become: true
   tasks:
-    - name: Setup Worker Node(s)
+    - name: setup worker node(s)
       include: worker-playbook.yml
-
